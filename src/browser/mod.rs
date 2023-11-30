@@ -189,6 +189,7 @@ impl Browser {
     /// because they each have their own thread which handles events and method responses directed to them.
     ///
     /// Wait timeout: 10 secs
+    #[cfg(not(feature = "tokio"))]
     #[deprecated(since = "1.0.4", note = "Use new_tab() instead.")]
     pub fn wait_for_initial_tab(&self) -> Result<Arc<Tab>> {
         match util::Wait::with_timeout(Duration::from_secs(10))
@@ -230,6 +231,20 @@ impl Browser {
         self.new_tab_with_options(default_blank_tab)
     }
 
+    #[cfg(feature = "tokio")]
+    pub async fn anew_tab(&self) -> Result<Arc<Tab>> {
+        let default_blank_tab = CreateTarget {
+            url: "about:blank".to_string(),
+            width: None,
+            height: None,
+            browser_context_id: None,
+            enable_begin_frame_control: None,
+            new_window: None,
+            background: None,
+        };
+        self.anew_tab_with_options(default_blank_tab).await
+    }
+
     /// Create a new tab with a starting url, height / width, context ID and 'frame control'
     /// ```rust
     /// # use anyhow::Result;
@@ -262,6 +277,28 @@ impl Browser {
                     }
                 })
             })
+            .map_err(Into::into)
+    }
+
+    #[cfg(feature = "tokio")]
+    pub async fn anew_tab_with_options(
+        &self,
+        create_target_params: CreateTarget,
+    ) -> Result<Arc<Tab>> {
+        let target_id = self.call_method(create_target_params)?.target_id;
+
+        util::Wait::with_timeout(Duration::from_secs(20))
+            .auntil(|| {
+                let tabs = self.inner.tabs.lock().unwrap();
+                tabs.iter().find_map(|tab| {
+                    if *tab.get_target_id() == target_id {
+                        Some(tab.clone())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .await
             .map_err(Into::into)
     }
 

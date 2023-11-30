@@ -93,6 +93,25 @@ impl Wait {
         }
     }
 
+    #[cfg(feature = "tokio")]
+    pub async fn auntil<F, G>(&self, predicate: F) -> Result<G, Timeout>
+    where
+        F: FnMut() -> Option<G>,
+    {
+        let mut predicate = predicate;
+        let start = Instant::now();
+        loop {
+            if let Some(v) = predicate() {
+                return Ok(v);
+            }
+            if start.elapsed() > self.timeout {
+                return Err(Timeout);
+            }
+            tokio::time::sleep(self.sleep).await;
+        }
+    }
+
+
     /// Wait until the given predicate returns `Ok(G)`, an unexpected error occurs or timeout arrives.
     ///
     /// Errors produced by the predicate are downcasted by the additional provided closure.
